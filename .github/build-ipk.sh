@@ -1,11 +1,12 @@
 #!/bin/bash
 # SPDX-License-Identifier: GPL-3.0-only
 #
-# Copyright (C) 2021 Tianling Shen <cnsztl@immortalwrt.org>
+# Copyright (C) 2021-2022 Tianling Shen <cnsztl@immortalwrt.org>
 
 export PKG_SOURCE_DATE_EPOCH="$(date "+%s")"
 
-PKG_DIR="$(realpath $PWD/../)"
+BASE_DIR="$(cd "$(dirname $0)"; pwd)"
+PKG_DIR="$BASE_DIR/.."
 
 function get_mk_value() {
 	awk -F "$1:=" '{print $2}' "$PKG_DIR/Makefile" | xargs
@@ -18,21 +19,28 @@ else
 	PKG_VERSION="dev-$PKG_SOURCE_DATE_EPOCH-$(git rev-parse --short HEAD)"
 fi
 
-TEMP_DIR="$(mktemp -d -p $PWD)"
-TEMP_PKG_DIR="$TEMP_DIR/$(get_mk_value "PKG_NAME")"
+TEMP_DIR="$(mktemp -d -p $BASE_DIR)"
+TEMP_PKG_DIR="$TEMP_DIR/$PKG_NAME"
 mkdir -p "$TEMP_PKG_DIR/CONTROL/"
+mkdir -p "$TEMP_PKG_DIR/lib/upgrade/keep.d/"
 mkdir -p "$TEMP_PKG_DIR/usr/lib/lua/luci/"
 
 cp -fpR "$PKG_DIR/luasrc"/* "$TEMP_PKG_DIR/usr/lib/lua/luci/"
 cp -fpR "$PKG_DIR/root"/* "$TEMP_PKG_DIR/"
 
 echo -e "/etc/config/unblockneteasemusic" > "$TEMP_PKG_DIR/CONTROL/conffiles"
+cat > "$TEMP_PKG_DIR/lib/upgrade/keep.d/$PKG_NAME" <<-EOF
+/usr/share/unblockneteasemusic/core/
+/usr/share/unblockneteasemusic/core_local_ver
+/usr/share/unblockneteasemusic/server.crt
+/usr/share/unblockneteasemusic/server.key
+EOF
 
 cat > "$TEMP_PKG_DIR/CONTROL/control" <<-EOF
 	Package: $PKG_NAME
 	Version: $PKG_VERSION
-	Depends: libc, $(get_mk_value "LUCI_DEPENDS" | tr " +" ", " | xargs)
-	Source: https://github.com/immortalwrt/luci-app-unblockneteasemusic
+	Depends: libc,$(get_mk_value "LUCI_DEPENDS" | xargs | tr " +" ", ")
+	Source: https://github.com/UnblockNeteaseMusic/luci-app-unblockneteasemusic
 	SourceName: $PKG_NAME
 	Section: luci
 	SourceDateEpoch: $PKG_SOURCE_DATE_EPOCH
@@ -65,7 +73,7 @@ chmod 0755 "$TEMP_PKG_DIR/CONTROL/prerm"
 
 curl -fsSL "https://raw.githubusercontent.com/openwrt/openwrt/master/scripts/ipkg-build" -o "$TEMP_DIR/ipkg-build"
 chmod 0755 "$TEMP_DIR/ipkg-build"
-"$TEMP_DIR/ipkg-build" -m "/:root:root:0755" "$TEMP_PKG_DIR" "$TEMP_DIR"
+"$TEMP_DIR/ipkg-build" -m "" "$TEMP_PKG_DIR" "$TEMP_DIR"
 
-mv "$TEMP_DIR/${PKG_NAME}_${PKG_VERSION}_all.ipk" "$PWD"
+mv "$TEMP_DIR/${PKG_NAME}_${PKG_VERSION}_all.ipk" "$BASE_DIR"
 rm -rf "$TEMP_DIR"
